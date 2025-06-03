@@ -49,8 +49,6 @@ struct LandingArgs {
 
 fn main() {
     let args = LandingArgs::parse();
-    let mut a = env::args();
-    a.next();
 
     let part_id = args
         .part_id
