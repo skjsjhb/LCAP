@@ -140,6 +140,8 @@ fn main() {
     #[cfg(target_os = "linux")]
     use tao::platform::unix::WindowExtUnix;
     #[cfg(target_os = "linux")]
+    use wry::WebViewBuilderExtUnix;
+    #[cfg(target_os = "linux")]
     let view_res = wb.build_gtk(window.gtk_window());
 
     #[cfg(not(target_os = "linux"))]
