@@ -3,7 +3,7 @@
 use clap::Parser;
 use std::fs::File;
 use std::io::Write;
-use std::process::exit;
+use std::process::ExitCode;
 use std::str::FromStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -190,7 +190,7 @@ fn main() {
         }
     });
 
-    exit(rc);
+    ExitCode::from(rc as u8)
 }
 
 fn create_context(uuid: &uuid::Uuid) -> WebContext {
