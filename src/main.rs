@@ -5,11 +5,9 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::Arc;
 use tao::dpi::PhysicalSize;
 use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoop};
+use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::window::WindowBuilder;
 use wry::{WebContext, WebViewBuilder};
@@ -47,6 +45,10 @@ struct LandingArgs {
     file: Option<String>,
 }
 
+enum LandingEvents {
+    Close(i32),
+}
+
 fn main() {
     let args = LandingArgs::parse();
 
@@ -60,7 +62,9 @@ fn main() {
     let code_tag = args.code_tag.unwrap_or("code".to_owned());
     let error_tag = args.error_tag.unwrap_or("error".to_owned());
 
-    let mut events = EventLoop::new();
+    let mut events: EventLoop<LandingEvents> = EventLoopBuilder::with_user_event().build();
+    let proxy = events.create_proxy();
+
     let window = WindowBuilder::new()
         .with_title(args.title.unwrap_or("LCAP".to_owned()))
         .build(&events)
@@ -85,19 +89,6 @@ fn main() {
         wb = wb.with_data_store_identifier(part_id.as_bytes().to_owned());
     }
 
-    let running = Arc::new(AtomicBool::new(true));
-    let exit_code = Arc::new(AtomicI32::new(1));
-
-    let set_exit = {
-        let r = running.clone();
-        let ec = exit_code.clone();
-
-        move |code: i32| {
-            r.store(false, Ordering::SeqCst);
-            ec.store(code, Ordering::SeqCst);
-        }
-    };
-
     let dump_output = {
         let fpo = args.file.to_owned();
 
@@ -120,13 +111,13 @@ fn main() {
 
         if let Some(ep) = u.query_pairs().find(|it| it.0 == error_tag) {
             dump_output(format!("LCAP:ERR={}", ep.1));
-            set_exit(1);
+            let _ = proxy.send_event(LandingEvents::Close(1));
             return false; // No need to navigate further
         }
 
         if let Some(cp) = u.query_pairs().find(|it| it.0 == code_tag) {
             dump_output(format!("LCAP:CODE={}", cp.1));
-            set_exit(0);
+            let _ = proxy.send_event(LandingEvents::Close(0));
             return false;
         }
 
@@ -156,16 +147,15 @@ fn main() {
     events.run_return(|ev, _, control| {
         *control = ControlFlow::Wait;
 
-        if !running.load(Ordering::SeqCst) {
-            *control = ControlFlow::ExitWithCode(exit_code.load(Ordering::SeqCst))
-        }
+        match ev {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control = ControlFlow::ExitWithCode(1),
 
-        if let Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } = ev
-        {
-            *control = ControlFlow::ExitWithCode(1)
+            Event::UserEvent(LandingEvents::Close(ec)) => *control = ControlFlow::ExitWithCode(ec),
+
+            _ => {}
         }
     });
 }
