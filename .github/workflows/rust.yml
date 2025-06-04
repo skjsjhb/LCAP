@@ -24,5 +24,10 @@ jobs:
         with:
           toolchain: nightly
 
+      - name: Install WebKitGTK
+        if: runner.os == 'Linux'
+        run: sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev
+
+
       - name: Build
         run: cargo build --verbose
