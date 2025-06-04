@@ -1,10 +1,12 @@
 #![feature(let_chains)]
 
 use clap::Parser;
-use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
+use std::thread::sleep;
+use std::time::Duration;
+use std::{env, thread};
 use tao::dpi::PhysicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
@@ -43,10 +45,15 @@ struct LandingArgs {
     /// Writes the output to file instead of stdout.
     #[arg(short, long)]
     file: Option<String>,
+
+    /// Maximum time (in milliseconds) to wait (for the page to get loaded) before showing the window.
+    #[arg(short, long, default_value_t = 5000)]
+    wait_timeout: u64,
 }
 
 enum LandingEvents {
     Close(i32),
+    SetVisible,
 }
 
 fn main() {
@@ -67,6 +74,7 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title(args.title.unwrap_or("LCAP".to_owned()))
+        .with_visible(false)
         .build(&events)
         .expect("Failed to create window");
 
@@ -89,6 +97,15 @@ fn main() {
         wb = wb.with_data_store_identifier(part_id.as_bytes().to_owned());
     }
 
+    thread::spawn({
+        let proxy = proxy.clone();
+        let timeout = args.wait_timeout;
+        move || {
+            sleep(Duration::from_millis(timeout));
+            let _ = proxy.send_event(LandingEvents::SetVisible);
+        }
+    });
+
     let dump_output = {
         let fpo = args.file.to_owned();
 
@@ -101,6 +118,14 @@ fn main() {
             }
 
             println!("\n{s}\n");
+        }
+    };
+
+    let on_page_loaded = {
+        let proxy = proxy.clone();
+
+        move |_, _| {
+            let _ = proxy.send_event(LandingEvents::SetVisible);
         }
     };
 
@@ -124,7 +149,10 @@ fn main() {
         true
     };
 
-    wb = wb.with_url(url).with_navigation_handler(on_url_captured);
+    wb = wb
+        .with_url(url)
+        .with_navigation_handler(on_url_captured)
+        .with_on_page_load_handler(on_page_loaded);
 
     #[cfg(target_os = "linux")]
     let view_res = {
@@ -154,6 +182,8 @@ fn main() {
             } => *control = ControlFlow::ExitWithCode(1),
 
             Event::UserEvent(LandingEvents::Close(ec)) => *control = ControlFlow::ExitWithCode(ec),
+
+            Event::UserEvent(LandingEvents::SetVisible) => window.set_visible(true),
 
             _ => {}
         }
