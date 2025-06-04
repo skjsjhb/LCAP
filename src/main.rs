@@ -1,19 +1,26 @@
 #![feature(let_chains)]
 
-use gumdrop::Options;
+use std::env;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
-use std::{env, thread};
+
+use gumdrop::Options;
 use tao::dpi::PhysicalSize;
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use tao::event::Event;
+use tao::event::WindowEvent;
+use tao::event_loop::ControlFlow;
+use tao::event_loop::EventLoop;
+use tao::event_loop::EventLoopBuilder;
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::window::WindowBuilder;
-use wry::{WebContext, WebViewBuilder};
+use wry::WebContext;
+use wry::WebViewBuilder;
 
 #[derive(Options)]
 struct LandingArgs {
@@ -50,12 +57,17 @@ struct LandingArgs {
 
     /// Maximum time (in milliseconds) to wait (for the page to get loaded) before showing the window.
     #[options(default = "5000")]
-    wait_timeout: u64,
+    wait_timeout: u64
+}
+
+struct WebViewInit {
+    should_show_now: bool,
+    context: Option<WebContext>
 }
 
 enum LandingEvents {
     Close(i32),
-    SetVisible,
+    SetVisible
 }
 
 fn main() -> ExitCode {
@@ -74,24 +86,29 @@ fn main() -> ExitCode {
     let mut events: EventLoop<LandingEvents> = EventLoopBuilder::with_user_event().build();
     let proxy = events.create_proxy();
 
+    let WebViewInit {
+        should_show_now,
+        mut context
+    } = prepare_webview(&part_id);
+
     let window = WindowBuilder::new()
         .with_title(args.title)
-        .with_visible(false)
+        .with_visible(should_show_now)
         .build(&events)
         .expect("Failed to create window");
 
     if let Some(ref mn) = window.current_monitor() {
         let (w, h): (u32, u32) = mn.size().into();
 
-        fn scale(a: u32, f: f32) -> u32 {
-            ((a as f32) * f).round() as u32
-        }
+        fn scale(a: u32, f: f32) -> u32 { ((a as f32) * f).round() as u32 }
 
         window.set_inner_size(PhysicalSize::new(scale(w, 0.6), scale(h, 0.6)));
     }
 
-    let mut ctx = create_context(&part_id);
-    let mut wb = WebViewBuilder::with_web_context(&mut ctx);
+    let mut wb = match context.as_mut() {
+        Some(wc) => WebViewBuilder::with_web_context(wc),
+        None => WebViewBuilder::new()
+    };
 
     #[cfg(target_os = "macos")]
     {
@@ -99,14 +116,27 @@ fn main() -> ExitCode {
         wb = wb.with_data_store_identifier(part_id.as_bytes().to_owned());
     }
 
-    thread::spawn({
-        let proxy = proxy.clone();
-        let timeout = args.wait_timeout;
-        move || {
-            sleep(Duration::from_millis(timeout));
-            let _ = proxy.send_event(LandingEvents::SetVisible);
-        }
-    });
+    if !should_show_now {
+        // Set triggers (timeout, page loading) if the window is not known to be visible at creation
+        thread::spawn({
+            let proxy = proxy.clone();
+            let timeout = args.wait_timeout;
+            move || {
+                sleep(Duration::from_millis(timeout));
+                let _ = proxy.send_event(LandingEvents::SetVisible);
+            }
+        });
+
+        let on_page_loaded = {
+            let proxy = proxy.clone();
+
+            move |_, _| {
+                let _ = proxy.send_event(LandingEvents::SetVisible);
+            }
+        };
+
+        wb = wb.with_on_page_load_handler(on_page_loaded);
+    }
 
     let dump_output = {
         let fpo = args.file.to_owned();
@@ -120,14 +150,6 @@ fn main() -> ExitCode {
             }
 
             println!("\n{s}\n");
-        }
-    };
-
-    let on_page_loaded = {
-        let proxy = proxy.clone();
-
-        move |_, _| {
-            let _ = proxy.send_event(LandingEvents::SetVisible);
         }
     };
 
@@ -151,10 +173,7 @@ fn main() -> ExitCode {
         true
     };
 
-    wb = wb
-        .with_url(url)
-        .with_navigation_handler(on_url_captured)
-        .with_on_page_load_handler(on_page_loaded);
+    wb = wb.with_url(url).with_navigation_handler(on_url_captured);
 
     #[cfg(target_os = "linux")]
     let view_res = {
@@ -194,14 +213,34 @@ fn main() -> ExitCode {
     ExitCode::from(rc as u8)
 }
 
-fn create_context(uuid: &uuid::Uuid) -> WebContext {
-    let cache_root = match directories::ProjectDirs::from("moe.skjsjhb", "", "LCAP") {
+fn prepare_webview(uuid: &uuid::Uuid) -> WebViewInit {
+    #[cfg(target_os = "macos")]
+    return WebViewInit {
+        should_show_now: false,
+        context: None
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let cache_root = get_cache_root(uuid);
+        let show_now = match cache_root.try_exists() {
+            Ok(ex) => !ex,
+            Err(_) => true
+        };
+
+        WebViewInit {
+            should_show_now: show_now,
+            context: Some(WebContext::new(Some(cache_root)))
+        }
+    }
+}
+
+fn get_cache_root(uuid: &uuid::Uuid) -> PathBuf {
+    match directories::ProjectDirs::from("moe.skjsjhb", "", "LCAP") {
         Some(dirs) => dirs.data_local_dir().join(uuid.to_string()),
         None => env::home_dir()
             .unwrap_or(env::temp_dir())
             .join("LCAP")
-            .join(uuid.to_string()),
-    };
-
-    WebContext::new(Some(cache_root))
+            .join(uuid.to_string())
+    }
 }
