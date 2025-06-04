@@ -75,7 +75,7 @@ fn main() -> ExitCode {
     let part_id = args
         .part_id
         .and_then(|u| uuid::Uuid::from_str(&u).ok())
-        .unwrap_or(uuid::Uuid::default());
+        .unwrap_or(uuid::Uuid::new_v4());
 
     let url = args.start_url.unwrap_or(DEFAULT_URL.to_owned());
 
