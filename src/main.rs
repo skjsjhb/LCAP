@@ -33,11 +33,8 @@ struct LandingArgs {
     part_id: Option<String>,
 
     /// An alternative URL to be used as entry.
-    #[options(
-        no_short,
-        default = "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"
-    )]
-    start_url: String,
+    #[options(no_short)]
+    start_url: Option<String>,
 
     /// Window title.
     #[options(default = "LCAP")]
@@ -70,6 +67,8 @@ enum LandingEvents {
     SetVisible
 }
 
+const DEFAULT_URL: &str = "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf";
+
 fn main() -> ExitCode {
     let args = LandingArgs::parse_args_default_or_exit();
 
@@ -78,7 +77,7 @@ fn main() -> ExitCode {
         .and_then(|u| uuid::Uuid::from_str(&u).ok())
         .unwrap_or(uuid::Uuid::default());
 
-    let url = args.start_url;
+    let url = args.start_url.unwrap_or(DEFAULT_URL.to_owned());
 
     let code_tag = args.code_tag;
     let error_tag = args.error_tag;
