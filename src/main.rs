@@ -3,6 +3,7 @@
 use clap::Parser;
 use std::fs::File;
 use std::io::Write;
+use std::process::exit;
 use std::str::FromStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -172,7 +173,7 @@ fn main() {
     // The webview instance must be hold here, or it will be destroyed
     let _view = view_res.expect("Unable to create webview instance");
 
-    events.run_return(|ev, _, control| {
+    let rc = events.run_return(|ev, _, control| {
         *control = ControlFlow::Wait;
 
         match ev {
@@ -188,6 +189,8 @@ fn main() {
             _ => {}
         }
     });
+
+    exit(rc);
 }
 
 fn create_context(uuid: &uuid::Uuid) -> WebContext {
