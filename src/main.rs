@@ -136,11 +136,16 @@ fn main() {
     wb = wb.with_url(url).with_navigation_handler(on_url_captured);
 
     #[cfg(target_os = "linux")]
-    use tao::platform::unix::WindowExtUnix;
-    #[cfg(target_os = "linux")]
-    use wry::WebViewBuilderExtUnix;
-    #[cfg(target_os = "linux")]
-    let view_res = wb.build_gtk(window.gtk_window());
+    let view_res = {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+
+        if let Some(vbox) = window.default_vbox() {
+            wb.build_gtk(vbox)
+        } else {
+            wb.build_gtk(window.gtk_window())
+        }
+    };
 
     #[cfg(not(target_os = "linux"))]
     let view_res = wb.build(&window);
