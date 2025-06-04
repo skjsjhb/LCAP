@@ -12,18 +12,13 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [ windows-latest, macos-latest, ubuntu-latest ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: nightly
-      
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
