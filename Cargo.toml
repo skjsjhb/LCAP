@@ -5,12 +5,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.39", features = ["derive"] }
 directories = "6.0.0"
+gumdrop = "0.8.1"
 tao = "0.33.0"
 url = "2.5.4"
 uuid = { version = "1.17.0", features = ["v4"] }
 wry = "0.51.2"
 
 [profile.release]
+opt-level = "z"
+codegen-units = 1
+strip = true
 lto = true

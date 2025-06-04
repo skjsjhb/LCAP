@@ -1,6 +1,6 @@
 #![feature(let_chains)]
 
-use clap::Parser;
+use gumdrop::Options;
 use std::fs::File;
 use std::io::Write;
 use std::process::ExitCode;
@@ -15,40 +15,41 @@ use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::window::WindowBuilder;
 use wry::{WebContext, WebViewBuilder};
 
-const FALLBACK_ENT_URL: &str = "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf";
-
-#[derive(Parser)]
+#[derive(Options)]
 struct LandingArgs {
-    /// UUID of the storage partition for this instance.
-    /// A random one is generated if unspecified or invalid.
-    ///
-    /// Browser data are shared between instances of the same UUID.
-    /// Making it useful for keeping user logged in.
-    #[arg(short, long, value_name = "UUID")]
+    /// Prints the help message.
+    #[options()]
+    help: bool,
+
+    /// UUID of the storage partition for this instance. Instances of the same UUID shares stored data.
+    #[options()]
     part_id: Option<String>,
 
     /// An alternative URL to be used as entry.
-    #[arg(short, long)]
-    start_url: Option<String>,
+    #[options(
+        no_short,
+        default = "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"
+    )]
+    start_url: String,
 
     /// Window title.
-    #[arg(short, long)]
-    title: Option<String>,
+    #[options(default = "LCAP")]
+    title: String,
 
     /// The URL search param used to match OAuth code.
-    #[arg(short, long)]
-    code_tag: Option<String>,
+    #[options(no_short, default = "code")]
+    code_tag: String,
 
     /// The URL search param used to match error descriptions.
-    #[arg(short, long)]
-    error_tag: Option<String>,
+    #[options(no_short, default = "error")]
+    error_tag: String,
 
     /// Writes the output to file instead of stdout.
-    #[arg(short, long)]
+    #[options()]
     file: Option<String>,
 
     /// Maximum time (in milliseconds) to wait (for the page to get loaded) before showing the window.
-    #[arg(short, long, default_value_t = 5000)]
+    #[options(default = "5000")]
     wait_timeout: u64,
 }
 
@@ -57,24 +58,24 @@ enum LandingEvents {
     SetVisible,
 }
 
-fn main() {
-    let args = LandingArgs::parse();
+fn main() -> ExitCode {
+    let args = LandingArgs::parse_args_default_or_exit();
 
     let part_id = args
         .part_id
         .and_then(|u| uuid::Uuid::from_str(&u).ok())
-        .unwrap_or(uuid::Uuid::new_v4());
+        .unwrap_or(uuid::Uuid::default());
 
-    let url = args.start_url.unwrap_or(FALLBACK_ENT_URL.to_owned());
+    let url = args.start_url;
 
-    let code_tag = args.code_tag.unwrap_or("code".to_owned());
-    let error_tag = args.error_tag.unwrap_or("error".to_owned());
+    let code_tag = args.code_tag;
+    let error_tag = args.error_tag;
 
     let mut events: EventLoop<LandingEvents> = EventLoopBuilder::with_user_event().build();
     let proxy = events.create_proxy();
 
     let window = WindowBuilder::new()
-        .with_title(args.title.unwrap_or("LCAP".to_owned()))
+        .with_title(args.title)
         .with_visible(false)
         .build(&events)
         .expect("Failed to create window");
