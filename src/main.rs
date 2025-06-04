@@ -109,7 +109,7 @@ fn main() {
                 return;
             }
 
-            println!("{s}");
+            println!("\n{s}\n");
         }
     };
 
