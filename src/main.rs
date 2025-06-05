@@ -17,7 +17,9 @@ use tao::event::WindowEvent;
 use tao::event_loop::ControlFlow;
 use tao::event_loop::EventLoop;
 use tao::event_loop::EventLoopBuilder;
+use tao::event_loop::EventLoopProxy;
 use tao::platform::run_return::EventLoopExtRunReturn;
+use tao::window::Window;
 use tao::window::WindowBuilder;
 use wry::WebContext;
 use wry::WebViewBuilder;
@@ -58,7 +60,7 @@ struct LandingArgs {
 }
 
 struct WebViewInit {
-    should_show_now: bool,
+    show_on_init: bool,
     context: Option<WebContext>
 }
 
@@ -86,7 +88,7 @@ fn main() -> ExitCode {
     let proxy = events.create_proxy();
 
     let WebViewInit {
-        should_show_now,
+        show_on_init: should_show_now,
         mut context
     } = prepare_webview(&part_id);
 
@@ -96,13 +98,7 @@ fn main() -> ExitCode {
         .build(&events)
         .expect("Failed to create window");
 
-    if let Some(ref mn) = window.current_monitor() {
-        let (w, h): (u32, u32) = mn.size().into();
-
-        fn scale(a: u32, f: f32) -> u32 { ((a as f32) * f).round() as u32 }
-
-        window.set_inner_size(PhysicalSize::new(scale(w, 0.6), scale(h, 0.6)));
-    }
+    set_optimal_window_size(&window);
 
     let mut wb = match context.as_mut() {
         Some(wc) => WebViewBuilder::with_web_context(wc),
@@ -137,40 +133,14 @@ fn main() -> ExitCode {
         wb = wb.with_on_page_load_handler(on_page_loaded);
     }
 
-    let dump_output = {
-        let fpo = args.file.to_owned();
-
-        move |s: String| {
-            if let Some(fp) = fpo.as_ref()
-                && let Ok(mut f) = File::create(fp)
-                && let Ok(_) = f.write_all(s.as_bytes())
-            {
-                return;
-            }
-
-            println!("\n{s}\n");
+    let on_url_captured = create_url_captured_handler(
+        proxy.to_owned(),
+        UrlHandlerContext {
+            file_path: args.file.to_owned(),
+            code_tag,
+            error_tag
         }
-    };
-
-    let on_url_captured = move |s: String| {
-        let Ok(u) = url::Url::from_str(&s) else {
-            return true;
-        };
-
-        if let Some(ep) = u.query_pairs().find(|it| it.0 == error_tag) {
-            dump_output(format!("LCAP:ERR={}", ep.1));
-            let _ = proxy.send_event(LandingEvents::Close(1));
-            return false; // No need to navigate further
-        }
-
-        if let Some(cp) = u.query_pairs().find(|it| it.0 == code_tag) {
-            dump_output(format!("LCAP:CODE={}", cp.1));
-            let _ = proxy.send_event(LandingEvents::Close(0));
-            return false;
-        }
-
-        true
-    };
+    );
 
     wb = wb.with_url(url).with_navigation_handler(on_url_captured);
 
@@ -212,10 +182,70 @@ fn main() -> ExitCode {
     ExitCode::from(rc as u8)
 }
 
+struct UrlHandlerContext {
+    file_path: Option<String>,
+    code_tag: String,
+    error_tag: String
+}
+
+fn create_url_captured_handler(
+    proxy: EventLoopProxy<LandingEvents>,
+    ctx: UrlHandlerContext
+) -> impl Fn(String) -> bool {
+    let UrlHandlerContext {
+        file_path,
+        code_tag,
+        error_tag
+    } = ctx;
+
+    let dump_output = move |s: String| {
+        match file_path {
+            Some(ref fp) => {
+                File::create(fp)
+                    .and_then(|mut f| f.write_all(s.as_bytes()))
+                    .expect("Failed to write to specified file");
+            }
+            None => {
+                println!("\n{s}\n")
+            }
+        };
+    };
+
+    move |s: String| {
+        let Ok(u) = url::Url::from_str(&s) else {
+            return true;
+        };
+
+        if let Some(ep) = u.query_pairs().find(|it| it.0 == error_tag) {
+            dump_output(format!("LCAP:ERR={}", ep.1));
+            let _ = proxy.send_event(LandingEvents::Close(1));
+            return false; // No need to navigate further
+        }
+
+        if let Some(cp) = u.query_pairs().find(|it| it.0 == code_tag) {
+            dump_output(format!("LCAP:CODE={}", cp.1));
+            let _ = proxy.send_event(LandingEvents::Close(0));
+            return false;
+        }
+
+        true
+    }
+}
+
+fn set_optimal_window_size(window: &Window) {
+    if let Some(mn) = window.current_monitor() {
+        let (w, h): (u32, u32) = mn.size().into();
+
+        fn scale(a: u32, f: f32) -> u32 { ((a as f32) * f).round() as u32 }
+
+        window.set_inner_size(PhysicalSize::new(scale(w, 0.6), scale(h, 0.6)));
+    }
+}
+
 fn prepare_webview(uuid: &uuid::Uuid) -> WebViewInit {
     #[cfg(target_os = "macos")]
     return WebViewInit {
-        should_show_now: false,
+        show_on_init: false,
         context: None
     };
 
@@ -228,7 +258,7 @@ fn prepare_webview(uuid: &uuid::Uuid) -> WebViewInit {
         };
 
         WebViewInit {
-            should_show_now: show_now,
+            show_on_init: show_now,
             context: Some(WebContext::new(Some(cache_root)))
         }
     }
