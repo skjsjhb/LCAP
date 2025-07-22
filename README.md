@@ -4,12 +4,12 @@ Lightweight craft authenticator, portable.
 
 ## Brief
 
-LCAP is a tiny (~300KiB with UPX) authenticator for code extraction in Microsoft OAuth process.
+LCAP is a tiny (~250KiB with UPX) authenticator for code extraction in Microsoft OAuth process.
 It provides an affordable way of accomplishing the vanilla login workflow for custom Minecraft launchers.
 
 ## Features
 
-- Optimized for size (~300KiB with UPX and ~1MiB unpacked on Windows)
+- Optimized for size (~300KiB with UPX and ~750KiB unpacked on Windows)
 - Easy code retrieval (`stdout` or files / named pipes)
 - Configurable partitioning (dedicated cache path for each UUID)
 - Works on major platforms (Windows, macOS, GNU/Linux X11 & Wayland)
@@ -111,7 +111,8 @@ seconds, and can be customized:
 > To minimize the binary size, we've toggled a set of compile options which may affect build performance.
 > Check `Cargo.toml` if adjustments are needed.
 
-First, install [Rust](https://www.rust-lang.org/learn/get-started) if not yet.
+LCAP uses [saucers](https://github.com/skjsjhb/saucers), so dependencies listed there are also required to build LCAP.
+Make sure to check it out!
 
 Clone the project:
 
@@ -125,10 +126,10 @@ This project has configured the corresponding toolchain to use, so simply do:
 cargo build --release
 ```
 
-Or, to build and run in one step:
+On Windows, due to limitations of LTO, the target may need to be specified explicitly:
 
 ```shell
-cargo run --release   # Additional arguments can be added via '-- ARGUMENTS'
+cargo build --release --target x86_64-pc-windows-msvc # or aarch64-pc-windows-msvc
 ```
 
 ## License
