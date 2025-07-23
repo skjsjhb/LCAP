@@ -68,7 +68,12 @@ fn main() {
     let error_tag = args.error_tag;
 
     let cache_root = get_cache_root(&part_id);
+
+    #[cfg(not(target_os = "macos"))]
     let show_now = !is_likely_auto_login(cache_root.as_path());
+
+    #[cfg(target_os = "macos")]
+    let show_now = false;
 
     let (_cc, app) = App::new(AppOptions::new("LCAP"));
 
@@ -144,15 +149,8 @@ fn optimal_window_size() -> (i32, i32) {
     ((w as f32 * 0.8) as i32, (h as f32 * 0.8) as i32)
 }
 
-fn is_likely_auto_login(cache: &Path) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        false
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    cache.try_exists().is_ok_and(|it| it)
-}
+#[cfg(not(target_os = "macos"))]
+fn is_likely_auto_login(cache: &Path) -> bool { cache.try_exists().is_ok_and(|it| it) }
 
 fn get_cache_root(uuid: &uuid::Uuid) -> PathBuf {
     match directories::ProjectDirs::from("moe.skjsjhb", "", "LCAP") {
